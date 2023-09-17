@@ -1,0 +1,29 @@
+services:
+  all:
+    image: 'gcc'
+    volumes:
+      - ./target:/target
+    working_dir: /target
+    command:
+      make all
+  clean:
+    image: 'gcc'
+    volumes:
+      - ./target:/target
+    working_dir: /target
+    command:
+      make clean
+  exec:
+    image: 'gcc'
+    volumes:
+      - ./target:/target
+    working_dir: /target
+    command:
+      make exec
+  make:
+    image: 'gcc'
+    volumes:
+      - ./target:/target
+    working_dir: /target
+    command:
+      make
