@@ -14,8 +14,8 @@ OBJDIR		= ./obj
 OBJECTS		= $(patsubst $(SRCDIR)%.cpp, $(OBJDIR)%.o, $(SOURCES))
 DEPENDS		= $(OBJECTS:.o=.d)
 # インクルードパス
-INCLUDES	= $(sort $(foreach dir, $(SRCDIRS), $(wildcard $(dir)/*.h)))
-INCLUDE		= $(addprefix -I, $(dir $(INCLUDES)))
+INCLUDES	= $(foreach dir, $(SRCDIRS), $(wildcard $(dir)/*.h))
+INCLUDE		= $(addprefix -I, $(sort $(dir $(INCLUDES))))
 
 # リンク
 $(OUTPUT): $(OBJECTS)
