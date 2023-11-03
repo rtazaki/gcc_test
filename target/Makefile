@@ -1,7 +1,7 @@
 # コンパイラ設定
 CXX			= g++
 CXXFLAGS	= -O3 -MMD -MP -Wall -Wextra -Winit-self -Wno-missing-field-initializers
-LDFLAGS 	=
+LDFLAGS 	= -lpthread -lpulse -lpulse-simple
 # 出力
 OUTPUT		= Executable.out
 # 対象ソース
@@ -59,7 +59,7 @@ $(UT_OBJDIR)/%.o: $(UT_SRCDIR)/%.cpp
 
 # リンク
 $(UT_OUTPUT): $(UT_OBJECTS)
-	$(CXX) -o $@ $^
+	$(CXX) -o $@ $^ $(LDFLAGS)
 
 # 単体テスト実行
 unittest: ut_clean $(UT_OUTPUT) ut_exec
