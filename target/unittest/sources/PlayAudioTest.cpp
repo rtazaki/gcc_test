@@ -13,6 +13,12 @@ protected:
     // virtual void TearDown(){}
 };
 
+IUTEST_F(PlayAudioTest, Nowait)
+{
+    auto wavfile = "file_example_WAV_1MG.wav";
+    pa.PlayAsync(wavfile);
+}
+
 IUTEST_F(PlayAudioTest, Async_3sec)
 {
     auto wavfile = "file_example_WAV_1MG.wav";
