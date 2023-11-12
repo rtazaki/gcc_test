@@ -1,45 +1,50 @@
 #include <filesystem>
 #include <fstream>
-#include <thread>
 #include <iostream>
-#include <pulse/simple.h>
+#include <cstdio>
+#include <unistd.h>
+#include <sys/mman.h>
 
-void play_audio(const std::string wavfile, pa_simple *pa)
+template <typename _CharT>
+class basic_filebuf_Mfile : public std::basic_filebuf<_CharT>
 {
-    auto filesize = std::filesystem::file_size(wavfile);
-    char buf[filesize];
-    std::ifstream fin(wavfile, std::ios::binary);
-    fin.read(buf, filesize);
-    fin.close();
-    std::puts("before pa_simple_write");
-    pa_simple_write(pa, buf, filesize, nullptr);
-    std::puts("after pa_simple_write");
+public:
+    using std::basic_filebuf<_CharT>::_M_file;
+};
+
+int GetFd(std::ios &f)
+{
+    if (std::fstream *fin = dynamic_cast<std::fstream *>(&f))
+    {
+        if (!fin->is_open())
+            return -1;
+        auto x = (basic_filebuf_Mfile<std::fstream::char_type> *)fin->rdbuf();
+        return x->_M_file.fd();
+    }
+    return -1;
 }
 
 int main()
 {
-    const pa_sample_spec ss = {
-        .format = PA_SAMPLE_S16LE,
-        .rate = 44100,
-        .channels = 2};
-    auto pa = pa_simple_new(
-        nullptr, "pulseaudio_hoge", PA_STREAM_PLAYBACK,
-        nullptr, "play", &ss, nullptr, nullptr, nullptr);
-
-    auto wavfile = "file_example_WAV_1MG.wav";
-    auto t1 = std::thread(play_audio, wavfile, pa);
-    t1.detach();
-
-    // 再生時間よりも待ちが短いと、pa_simple_drainで待つ。
-    // 待ちが長くても問題なく終了する。(例: 10秒とか)
-    for (int i = 0; i < 3; i++)
+    auto filepath = "mmap_read.txt";
+    std::fstream f(filepath, std::ios::in | std::ios::out);
+    auto filesize = std::filesystem::file_size(filepath);
+    std::cout << "filesize: " << filesize << std::endl;
+    auto pagesize = sysconf(_SC_PAGESIZE);
+    std::cout << "pagesize: " << pagesize << std::endl;
+    auto mmapsize = (filesize / pagesize + 1) * pagesize;
+    std::cout << "mmapsize: " << mmapsize << std::endl;
+    auto fd = GetFd(f);
+    std::cout << "fd: " << fd << std::endl;
+    auto mm =
+        static_cast<unsigned char *>(
+            mmap(nullptr, mmapsize, PROT_READ, MAP_SHARED, fd, 0));
+    for (auto i = (unsigned long)0; i < mmapsize; i++)
     {
-        std::cout << i << "秒経過" << std::endl;
-        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+        std::cout << std::hex << mm[i] << std::endl;
+        if (mm[i] == 0)
+            break;
     }
-    std::puts("最後まで待ってから閉じる。");
-    pa_simple_drain(pa, nullptr);
-    pa_simple_free(pa);
-    std::puts("main終端");
+    munmap(mm, mmapsize);
     return 0;
 }

@@ -1,7 +1,7 @@
 # コンパイラ設定
 CXX			= g++
 CXXFLAGS	= -O3 -MMD -MP -Wall -Wextra -Winit-self -Wno-missing-field-initializers
-LDFLAGS 	= -lpthread -lpulse -lpulse-simple
+LDFLAGS 	= 
 # 出力
 OUTPUT		= Executable.out
 # 対象ソース
@@ -49,8 +49,10 @@ UT_OBJDIR		= $(UT_DIR)/obj
 UT_OBJECTS		= $(patsubst $(UT_SRCDIR)%.cpp, $(UT_OBJDIR)%.o, $(UT_SOURCES))
 UT_DEPENDS		= $(UT_OBJECTS:.o=.d)
 # インクルードパス
-UT_INCLUDES		= ./sources/wrapper ./unittest/iutest-1.17.1/include
-UT_INCLUDE		= $(addprefix -I, $(sort $(UT_INCLUDES)))
+UT_INCDIRS		= $(shell find ./sources/wrapper -type d)
+UT_INCLUDES	= $(foreach dir, $(UT_INCDIRS), $(wildcard $(dir)/*.h))
+UT_INCLUDE		= $(addprefix -I, $(sort $(dir $(UT_INCLUDES)))) \
+					-I./unittest/iutest-1.17.1/include
 
 # コンパイル
 $(UT_OBJDIR)/%.o: $(UT_SRCDIR)/%.cpp
@@ -71,3 +73,6 @@ ut_clean:
 # 実行
 ut_exec:
 	$(UT_OUTPUT)
+
+test:
+	@echo $(UT_INCLUDE)

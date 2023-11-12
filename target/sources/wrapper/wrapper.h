@@ -1,79 +1,113 @@
 #pragma once
+
 #include <filesystem>
 #include <fstream>
-#include <mutex>
-#include <pulse/simple.h>
-#include <thread>
+#include <string>
+#include <unistd.h>
+#include <sys/mman.h>
 
-/// @attention 中断とか真面目にやるなら、pulse/simpleを使ってはいけない。
+#define FILE_SHARE_READ 0x00000001
+#define FILE_SHARE_WRITE 0x00000002
 
-/// @note 分割せずにそのままバッファを突っ込む。
-/// @attention 超巨大ファイルの再生とかはしない。
-void play_audio(const std::string wavfile, pa_simple *pa, std::mutex *mtx)
-{
-    std::puts("play_audio");
-    auto filesize = std::filesystem::file_size(wavfile);
-    char buf[filesize];
-    std::ifstream fin(wavfile, std::ios::binary);
-    fin.read(buf, filesize);
-    fin.close();
-    std::puts("play_audio: unlock()");
-    mtx->unlock();
-    std::puts("before pa_simple_write");
-    pa_simple_write(pa, buf, filesize, nullptr);
-    std::puts("after pa_simple_write");
-}
+#define INVALID_HANDLE_VALUE reinterpret_cast<std::fstream *>(-1)
 
-class PlayAudio
+template <typename _CharT>
+class basic_filebuf_Mfile : public std::basic_filebuf<_CharT>
 {
 public:
-    /// @brief リソース生成
-    PlayAudio()
+    using std::basic_filebuf<_CharT>::_M_file;
+};
+
+class HANDLE
+{
+public:
+    HANDLE() {}
+    HANDLE(std::fstream *)
     {
-        std::puts("PlayAudio");
-        const pa_sample_spec ss = {
-            .format = PA_SAMPLE_S16LE,
-            .rate = 44100,
-            .channels = 2};
-        m_pa = pa_simple_new(
-            nullptr, "pulseaudio_hoge", PA_STREAM_PLAYBACK,
-            nullptr, "play", &ss, nullptr, nullptr, nullptr);
-        std::puts("PlayAudio end");
+        m_fstream = INVALID_HANDLE_VALUE;
     }
 
-    /// @brief 非同期再生
-    /// @param wavfile 再生するファイル
-    /// @param pa PulseAudio Simple API接続情報
-    /// @brief 数秒程度のwavfileを想定し、待たずに即応答する。
-    /// @attention ファイル再生中かどうかは気にしない。
-    void PlayAsync(const std::string &wavfile)
+    HANDLE(std::string filepath, std::ios_base::openmode mode, long sharedMode)
     {
-        std::puts("PlayAsync");
-        m_mtx = new std::mutex();
-        std::puts("PlayAsync: lock()");
-        m_mtx->lock();
-        auto t1 = std::thread(play_audio, wavfile, m_pa, m_mtx);
-        t1.detach();
-        std::puts("PlayAsync end");
+        m_fstream = new std::fstream(filepath, mode);
+        m_shared = 0;
+        if (sharedMode | FILE_SHARE_READ == FILE_SHARE_READ)
+            m_shared |= PROT_READ;
+        if (sharedMode | FILE_SHARE_WRITE == FILE_SHARE_WRITE)
+            m_shared |= PROT_WRITE;
+        m_size = std::filesystem::file_size(filepath);
     }
 
-    /// @brief 解放待ち
-    /// @param pa PulseAudio Simple API接続情報
-    /// @note 再生中にプログラム停止されるとシステムに優しくないので最後まで待つ。
-    /// @attention 非同期再生コール後、1ms(pa_simple_writeされた後?)程度後であれば、
-    /// 再生終了を待つため、安全。
-    ~PlayAudio()
+    operator int() const
     {
-        std::puts("~PlayAudio");
-        std::puts("~PlayAudio: lock()");
-        m_mtx->lock();
-        pa_simple_drain(m_pa, nullptr);
-        pa_simple_free(m_pa);
-        delete m_mtx;
-        std::puts("~PlayAudio end");
+        if (m_fstream == INVALID_HANDLE_VALUE)
+            return -1;
+        std::fstream *fin = dynamic_cast<std::fstream *>(m_fstream);
+        if (!fin->is_open())
+            return -1;
+        auto x = reinterpret_cast<
+            basic_filebuf_Mfile<std::fstream::char_type> *>(fin->rdbuf());
+        return x->_M_file.fd();
+    }
+
+    long GetSize()
+    {
+        return m_size;
+    }
+
+    int GetSizeH()
+    {
+        return m_sizeHL[1];
+    }
+
+    int GetSizeL()
+    {
+        return m_sizeHL[0];
     }
 
 private:
-    pa_simple *m_pa;
-    std::mutex *m_mtx;
+    std::fstream *m_fstream;
+    long m_shared;
+    union
+    {
+        unsigned long m_size;
+        unsigned int m_sizeHL[2];
+    };
 };
+#define GENERIC_READ (0x80000000L)
+#define GENERIC_WRITE (0x40000000L)
+
+#define CREATE_ALWAYS 2
+#define OPEN_EXISTING 3
+#define OPEN_ALWAYS 4
+
+inline auto CreateFile(
+    char *lpFileName, long accessMode, long sharedMode, void *,
+    unsigned int createMode, void *, void *)
+{
+    auto mode = std::ios_base::openmode();
+    if (accessMode | GENERIC_READ == GENERIC_READ)
+        mode |= std::ios_base::in;
+    if (accessMode | GENERIC_WRITE == GENERIC_WRITE)
+        mode |= std::ios_base::out;
+    if (createMode == CREATE_ALWAYS)
+        mode |= std::ios_base::trunc;
+    auto filepath = std::string(lpFileName);
+    auto ec = std::error_code();
+    if (createMode == OPEN_EXISTING && !std::filesystem::exists(filepath, ec))
+        return HANDLE(INVALID_HANDLE_VALUE);
+    return HANDLE(filepath, mode, sharedMode);
+}
+
+inline auto CreateFileMapping(
+    HANDLE hFile, void *, int type, int sizeH, int sizeL, wchar_t *)
+{
+    // auto filepath = "mmap_read.txt";
+    // std::fstream f(filepath, std::ios::in | std::ios::out);
+    // auto filesize = std::filesystem::file_size(filepath);
+    // //
+    // auto pagesize = sysconf(_SC_PAGESIZE);
+    // auto mmapsize = (filesize / pagesize + 1) * pagesize;
+    // auto fd = GetFd(f);
+    return 0;
+}
